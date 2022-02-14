@@ -1,0 +1,21 @@
+[package]
+name = "astr"
+version = "0.1.0"
+authors = ["Liam Perlaki <lperlaki@icloud.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+
+[features]
+default = ["std"]
+std = []
+
+
+[package.metadata.docs.rs]
+# To build locally:
+# RUSTDOCFLAGS="--cfg doc_cfg" cargo +nightly doc --all-features --no-deps --open
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
