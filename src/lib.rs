@@ -4,13 +4,12 @@ use core::{array::TryFromSliceError, str::Utf8Error};
 
 #[macro_export]
 macro_rules! astr {
-    ($input:expr) => {{
-        const STR: &str = $input;
-        const LEN: usize = STR.len();
-        const PTR: *const [u8; LEN] = STR.as_ptr().cast();
-        const BYTES: &[u8; LEN] = unsafe { &*PTR };
-        unsafe { $crate::AStr::<LEN>::from_utf8_array_unchecked(BYTES) }
-    }};
+    ($input:expr) => {
+        unsafe {
+            const LEN: usize = $input.len();
+            $crate::AStr::<LEN>::from_utf8_array_unchecked(&*$input.as_ptr().cast::<[u8; LEN]>())
+        }
+    };
 }
 
 #[repr(transparent)]
@@ -23,6 +22,8 @@ enum AStrErrorInner {
     Slice(TryFromSliceError),
 }
 
+
+#[derive(Debug, Clone)]
 pub struct AStrError(AStrErrorInner);
 
 impl From<Utf8Error> for AStrError {
@@ -46,8 +47,15 @@ impl core::fmt::Display for AStrError {
     }
 }
 
-#[cfg(std)]
-impl std::error::Error for AStrError {}
+#[cfg(feature = "std")]
+impl std::error::Error for AStrError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self.0 {
+            AStrErrorInner::Utf8(ref err) => Some(err),
+            AStrErrorInner::Slice(ref err) => Some(err),
+        }
+    }
+}
 
 impl<const SIZE: usize> AStr<SIZE> {
     pub const unsafe fn from_utf8_array_unchecked(arr: &[u8; SIZE]) -> &Self {
@@ -145,6 +153,8 @@ impl<const SIZE: usize> AsRef<[u8]> for AStr<SIZE> {
     }
 }
 
+
+// Should be Unsize<str> but that's unstable
 impl<const SIZE: usize> core::ops::Deref for AStr<SIZE> {
     type Target = str;
     fn deref(&self) -> &str {
@@ -267,6 +277,42 @@ impl Default for AStr<0> {
     }
 }
 
+#[cfg(feature = "serde")]
+mod serde_impl {
+    use super::AStr;
+    use serde::{
+        de::{self, Visitor},
+        Deserialize, Deserializer, Serialize, Serializer,
+    };
+
+    impl<const SIZE: usize> Serialize for AStr<SIZE> {
+        fn serialize<S: Serializer>(&'_ self, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_str(self.as_str())
+        }
+    }
+
+    struct AStrVisitor<const SIZE: usize>;
+
+    impl<'de, const SIZE: usize> Visitor<'de> for AStrVisitor<SIZE> {
+        type Value = AStr<SIZE>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(formatter, "a string of length {}", SIZE)
+        }
+
+        #[inline]
+        fn visit_str<E: de::Error>(self, s: &'_ str) -> Result<Self::Value, E> {
+            AStr::try_from(s)
+                .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(s), &self))
+        }
+    }
+
+    impl<'de, const SIZE: usize> Deserialize<'de> for AStr<SIZE> {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_str(AStrVisitor::<SIZE>)
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::{astr, AStr};
@@ -295,6 +341,14 @@ mod tests {
     #[test]
     fn test_to_string() {
         let s = *astr!("hello");
+
+        assert_eq!(s.to_string(), "hello");
+    }
+
+    #[test]
+    fn test_from_string() {
+        const S: &str = "hello";
+        let s = *astr!(S);
 
         assert_eq!(s.to_string(), "hello");
     }
