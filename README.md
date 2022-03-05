@@ -1,6 +1,8 @@
 # astr
 
-A compile time known string
+> **a**rray **str**ing
+
+A const lenght stack str
 
 | Unsized | Const Length | Dynamic |
 |--- | --- | --- |
