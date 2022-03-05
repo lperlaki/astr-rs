@@ -46,8 +46,14 @@ macro_rules! astr {
 /// assert_eq!(s, "Hallo World");
 /// ```
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AStr<const LEN: usize>([u8; LEN]);
+
+impl<const LEN: usize> std::hash::Hash for AStr<LEN> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum AStrError {
