@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Liam Perlaki <lperlaki@icloud.com>"]
 edition = "2021"
 repository = "github.com/lperlaki/astr-rs"
+description = "A const lenght stack str"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
