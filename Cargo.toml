@@ -3,7 +3,7 @@ name = "astr"
 version = "0.1.0"
 authors = ["Liam Perlaki <lperlaki@icloud.com>"]
 edition = "2021"
-repository = "github.com/lperlaki/astr-rs"
+repository = "https://github.com/lperlaki/astr-rs"
 description = "A const lenght stack str"
 license = "MIT"
 
