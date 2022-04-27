@@ -17,31 +17,32 @@ use core::{array::TryFromSliceError, str::Utf8Error};
 macro_rules! astr {
     ($input:expr) => {
         unsafe {
-            const LEN: usize = $input.len();
+            const STR: &str = $input;
+            const LEN: usize = STR.len();
             // this is safa because we know that the bytes are valid utf8
-            $crate::AStr::<LEN>::from_utf8_array_unchecked_ref(&*$input.as_ptr().cast::<[u8; LEN]>())
+            $crate::AStr::<LEN>::from_utf8_array_unchecked_ref(&*STR.as_ptr().cast::<[u8; LEN]>())
         }
     };
 }
 
 /// A str with a copiletime length.
-/// 
+///
 /// This is a wrapper around an array of bytes representing an utf-8 string.
-/// 
+///
 /// use the `astr!` macro to create an AStr from a string literal.
-/// 
+///
 /// ```rust
 /// use astr::astr;
-/// 
+///
 /// let s = astr!("iam a string");
 /// assert_eq!(s, "iam a string");
 /// ```
-/// 
+///
 /// if you want to create an AStr from a string or string reference, use the `AStr::try_from`
-/// 
+///
 /// ```rust
 /// use astr::AStr;
-/// 
+///
 /// let s = AStr::<11>::try_from("Hallo World").unwrap();
 /// assert_eq!(s, "Hallo World");
 /// ```
@@ -338,7 +339,6 @@ impl<const LEN: usize> From<AStr<LEN>> for String {
     }
 }
 
-
 #[cfg(feature = "std")]
 impl<const LEN: usize> TryFrom<String> for AStr<LEN> {
     type Error = AStrError;
@@ -347,7 +347,6 @@ impl<const LEN: usize> TryFrom<String> for AStr<LEN> {
         Ok(*AStr::from_str_ref(&str)?)
     }
 }
-
 
 impl Default for AStr<0> {
     fn default() -> Self {
