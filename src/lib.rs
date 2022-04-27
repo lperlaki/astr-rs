@@ -13,6 +13,23 @@ use core::{array::TryFromSliceError, str::Utf8Error};
 /// assert_eq!(s, "iam a string");
 /// ```
 ///
+/// ## Repeat a char
+/// ```rust
+/// use astr::astr;
+/// 
+/// let s = astr!('a'; 5);
+/// assert_eq!(s, "aaaaa");
+/// ```
+/// 
+/// Does also work for non-ascii chars.
+/// ```rust
+/// use astr::astr;
+/// 
+/// let s = astr!('ä'; 10);
+/// 
+/// assert_eq!(s, "ääääääääää");
+/// ```
+/// 
 #[macro_export]
 macro_rules! astr {
     ($input:expr) => {
@@ -23,6 +40,14 @@ macro_rules! astr {
             $crate::AStr::<LEN>::from_utf8_array_unchecked_ref(&*STR.as_ptr().cast::<[u8; LEN]>())
         }
     };
+    ($input:expr; $len:literal) => {{
+        const CHAR: char = $input;
+
+        const LEN: usize = $len * CHAR.len_utf8();
+
+        const RET: $crate::AStr<LEN> = $crate::AStr::<LEN>::repeat(CHAR);
+        RET
+    }};
 }
 
 /// A str with a copiletime length.
@@ -116,62 +141,98 @@ impl<const LEN: usize> AStr<LEN> {
     }
 
     /// Create a new AStr from a slice of bytes.
-    pub fn from_utf8_array_ref(arr: &[u8; LEN]) -> Result<&Self, AStrError> {
+    pub fn try_from_utf8_array_ref(arr: &[u8; LEN]) -> Result<&Self, AStrError> {
         core::str::from_utf8(arr)?;
         Ok(unsafe { Self::from_utf8_array_unchecked_ref(arr) })
     }
 
     /// Create a new AStr from a slice of bytes.
-    pub fn from_utf8_array_mut(arr: &mut [u8; LEN]) -> Result<&mut Self, AStrError> {
+    pub fn try_from_utf8_array_mut(arr: &mut [u8; LEN]) -> Result<&mut Self, AStrError> {
         core::str::from_utf8_mut(arr)?;
         Ok(unsafe { Self::from_utf8_array_unchecked_mut(arr) })
     }
 
     /// Create a new AStr from a slice of bytes.
-    pub fn from_utf8(slice: &[u8]) -> Result<&Self, AStrError> {
-        Ok(Self::from_utf8_array_ref(slice.try_into()?)?)
+    pub fn try_from_utf8(slice: &[u8]) -> Result<&Self, AStrError> {
+        Ok(Self::try_from_utf8_array_ref(slice.try_into()?)?)
     }
 
     /// Create a new AStr from a slice of bytes.
-    pub fn from_utf8_mut(slice: &mut [u8]) -> Result<&mut Self, AStrError> {
-        Ok(Self::from_utf8_array_mut(slice.try_into()?)?)
+    /// # Panics
+    /// Panics if the slice is not valid UTF-8 or the wrong length.
+    pub fn from_utf8(slice: &[u8]) -> &Self {
+        Self::try_from_utf8(slice).unwrap()
+    }
+
+    /// Create a new AStr from a slice of bytes.
+    pub fn try_from_utf8_mut(slice: &mut [u8]) -> Result<&mut Self, AStrError> {
+        Ok(Self::try_from_utf8_array_mut(slice.try_into()?)?)
+    }
+
+    /// Create a new AStr from a slice of bytes.
+    /// # Panics
+    /// Panics if the slice is not valid UTF-8 or the wrong length.
+    pub fn from_utf8_mut(slice: &mut [u8]) -> &mut Self {
+        Self::try_from_utf8_mut(slice).unwrap()
     }
 
     /// Create a new AStr from a str
-    pub fn from_str_ref(str: &str) -> Result<&Self, AStrError> {
+    pub fn try_from_str_ref(str: &str) -> Result<&Self, AStrError> {
         let arr = str.as_bytes().try_into()?;
         Ok(unsafe { Self::from_utf8_array_unchecked_ref(arr) })
     }
 
     /// Create a new AStr from a str
-    pub fn from_str_mut(str: &mut str) -> Result<&mut Self, AStrError> {
+    /// # Panics
+    /// Panics if the string is not th right length.
+    pub fn from_str_ref(str: &str) -> &Self {
+        Self::try_from_str_ref(str).unwrap()
+    }
+
+    /// Create a new AStr from a str
+    pub fn try_from_str_mut(str: &mut str) -> Result<&mut Self, AStrError> {
         Ok(unsafe {
             let arr = str.as_bytes_mut().try_into()?;
             Self::from_utf8_array_unchecked_mut(arr)
         })
     }
 
+    /// Create a new AStr from a str
+    /// # Panics
+    /// Panics if the string is not th right length.
+    pub fn from_str_mut(str: &mut str) -> &mut Self {
+        Self::try_from_str_mut(str).unwrap()
+    }
+
+    pub const fn as_ptr(&self) -> *const u8 {
+        self.as_str().as_ptr()
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut u8 {
+        self.as_str_mut().as_mut_ptr()
+    }
+
     /// get byte representation of the AStr
-    pub const fn as_bytes_array(&self) -> &[u8; LEN] {
+    pub const fn as_bytes(&self) -> &[u8; LEN] {
         &self.0
     }
 
     /// get mutable byte representation of the AStr
     /// # Safety
     /// Invariant: the byte array must be valid UTF-8.
-    pub unsafe fn as_bytes_array_mut(&mut self) -> &mut [u8; LEN] {
+    pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8; LEN] {
         &mut self.0
     }
 
     /// get byte representation of the AStr
-    pub const fn as_bytes(&self) -> &[u8] {
+    pub const fn as_slice(&self) -> &[u8] {
         &self.0
     }
 
     /// get mutable byte representation of the AStr
     /// # Safety
     /// Invariant: the byte array must be valid UTF-8.
-    pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
+    pub unsafe fn as_slice_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
 
@@ -183,6 +244,33 @@ impl<const LEN: usize> AStr<LEN> {
     /// get mutable str representation of the AStr
     pub fn as_str_mut(&mut self) -> &mut str {
         unsafe { core::str::from_utf8_unchecked_mut(self.as_bytes_mut()) }
+    }
+
+    /// repeate ascii char LEN times to fill the str
+    /// # Safety
+    /// the byte must be valid UTF-8.
+    pub const unsafe fn repeat_byte(byte: u8) -> Self {
+        Self::from_utf8_array_unchecked([byte; LEN])
+    }
+
+    pub const fn repeat(c: char) -> Self {
+        let char_len = c.len_utf8();
+
+        assert!(
+            LEN % char_len == 0,
+            "LEN is not a multiple of the char utf8 length"
+        );
+
+        let char_bytes: [u8; 4] = encode_utf8_raw(c);
+
+        let mut bytes = [0; LEN];
+        let mut i = 0;
+        while i < LEN {
+            bytes[i] = char_bytes[(i % char_len)];
+            i += 1
+        }
+
+        unsafe { Self::from_utf8_array_unchecked(bytes) }
     }
 }
 
@@ -246,7 +334,7 @@ impl<'a, const LEN: usize> TryFrom<&'a str> for &'a AStr<LEN> {
     type Error = AStrError;
 
     fn try_from(str: &'a str) -> Result<Self, Self::Error> {
-        AStr::from_str_ref(str)
+        AStr::try_from_str_ref(str)
     }
 }
 
@@ -254,7 +342,7 @@ impl<'a, const LEN: usize> TryFrom<&'a mut str> for &'a mut AStr<LEN> {
     type Error = AStrError;
 
     fn try_from(str: &'a mut str) -> Result<Self, Self::Error> {
-        AStr::from_str_mut(str)
+        AStr::try_from_str_mut(str)
     }
 }
 
@@ -262,7 +350,7 @@ impl<const LEN: usize> TryFrom<&'_ str> for AStr<LEN> {
     type Error = AStrError;
 
     fn try_from(str: &'_ str) -> Result<Self, Self::Error> {
-        Ok(*AStr::from_str_ref(str)?)
+        Ok(*AStr::try_from_str_ref(str)?)
     }
 }
 
@@ -344,7 +432,7 @@ impl<const LEN: usize> TryFrom<String> for AStr<LEN> {
     type Error = AStrError;
 
     fn try_from(str: String) -> Result<Self, Self::Error> {
-        Ok(*AStr::from_str_ref(&str)?)
+        Ok(*AStr::try_from_str_ref(&str)?)
     }
 }
 
@@ -389,6 +477,39 @@ mod serde_impl {
         }
     }
 }
+
+const fn encode_utf8_raw(c: char) -> [u8; 4] {
+    const TAG_CONT: u8 = 0b1000_0000;
+    const TAG_TWO_B: u8 = 0b1100_0000;
+    const TAG_THREE_B: u8 = 0b1110_0000;
+    const TAG_FOUR_B: u8 = 0b1111_0000;
+
+    let len = c.len_utf8();
+    let code = c as u32;
+    match len {
+        1 => [code as u8, 0, 0, 0],
+        2 => [
+            (code >> 6 & 0x1F) as u8 | TAG_TWO_B,
+            (code & 0x3F) as u8 | TAG_CONT,
+            0,
+            0,
+        ],
+        3 => [
+            (code >> 12 & 0x0F) as u8 | TAG_THREE_B,
+            (code >> 6 & 0x3F) as u8 | TAG_CONT,
+            (code & 0x3F) as u8 | TAG_CONT,
+            0,
+        ],
+        4 => [
+            (code >> 18 & 0x07) as u8 | TAG_FOUR_B,
+            (code >> 12 & 0x3F) as u8 | TAG_CONT,
+            (code >> 6 & 0x3F) as u8 | TAG_CONT,
+            (code & 0x3F) as u8 | TAG_CONT,
+        ],
+        _ => unreachable!(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{astr, AStr};
