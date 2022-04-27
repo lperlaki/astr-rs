@@ -1,6 +1,6 @@
 [package]
 name = "astr"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Liam Perlaki <lperlaki@icloud.com>"]
 edition = "2021"
 repository = "https://github.com/lperlaki/astr-rs"
