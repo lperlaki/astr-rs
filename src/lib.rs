@@ -2,6 +2,45 @@
 #![doc = include_str!("../README.md")]
 
 use core::{array::TryFromSliceError, str::Utf8Error};
+mod valid_input {
+    pub unsafe trait ValidInput {}
+    unsafe impl ValidInput for &str {}
+    unsafe impl<const LEN: usize> ValidInput for &crate::AStr<LEN> {}
+    unsafe impl<const LEN: usize> ValidInput for crate::AStr<LEN> {}
+    pub const fn valid_input<T: ValidInput>(inp: T) -> T {
+        inp
+    }
+}
+pub use valid_input::valid_input;
+
+macro_rules! concat_astr {
+    ($a:expr, $b:expr) => {{
+        $crate::valid_input($a);
+        $crate::valid_input($b);
+        const A_LEN: usize = $a.len();
+        const B_LEN: usize = $b.len();
+        const LEN: usize = A_LEN + B_LEN;
+
+        let ret_buf: [u8; LEN] = {
+    let mut ret = [0; LEN];
+    let mut i = 0;
+    while i < A_LEN {
+        ret[i] = $a.as_bytes()[i];
+        i += 1;
+    }
+    while i < LEN {
+        ret[i] = $b.as_bytes()[i - A_LEN];
+        i += 1;
+    }
+    ret
+};
+
+        unsafe { $crate::AStr::<LEN>::from_utf8_array_unchecked(ret_buf) }
+    }};
+    ($a:expr, $b:expr, $($rest:expr),*) => {{
+        concat_astr!($a, concat_astr!($b, $($rest),*))
+    }};
+}
 
 /// # astr
 /// Build an AStr from a string literal.
@@ -16,29 +55,34 @@ use core::{array::TryFromSliceError, str::Utf8Error};
 /// ## Repeat a char
 /// ```rust
 /// use astr::astr;
-/// 
+///
 /// let s = astr!('a'; 5);
 /// assert_eq!(s, "aaaaa");
 /// ```
-/// 
+///
 /// Does also work for non-ascii chars.
 /// ```rust
 /// use astr::astr;
-/// 
+///
 /// let s = astr!('ä'; 10);
-/// 
+///
 /// assert_eq!(s, "ääääääääää");
 /// ```
-/// 
+///
 #[macro_export]
 macro_rules! astr {
     ($input:expr) => {
         unsafe {
-            const STR: &str = $input;
-            const LEN: usize = STR.len();
-            // this is safa because we know that the bytes are valid utf8
-            $crate::AStr::<LEN>::from_utf8_array_unchecked_ref(&*STR.as_ptr().cast::<[u8; LEN]>())
+            $crate::valid_input($input);
+            const LEN: usize = $input.len();
+            // this is safe because we know that the bytes are valid utf8
+            $crate::AStr::<LEN>::from_utf8_array_unchecked_ref(
+                &*$input.as_ptr().cast::<[u8; LEN]>(),
+            )
         }
+    };
+    ($a:expr, $( $rest:expr),*) => {
+        concat_astr!($a, $($rest),*)
     };
     ($input:expr; $len:literal) => {{
         const CHAR: char = $input;
@@ -271,7 +315,7 @@ impl<const LEN: usize> AStr<LEN> {
         }
 
         unsafe { Self::from_utf8_array_unchecked(bytes) }
-    }
+    }pub const fn len(&self) -> usize { self.as_str().len()}
 }
 
 impl<const LEN: usize> AsRef<str> for AStr<LEN> {
@@ -527,7 +571,13 @@ mod tests {
         assert_eq!(s.len(), 5);
         assert_eq!(s, "hello");
     }
+    #[test]
+    fn test_macro_expr() {
+        const SOURCE: &str = "Hello, world!";
+        let s = astr!(SOURCE);
 
+        assert_eq!(s, SOURCE);
+    }
     #[test]
     fn test_index() {
         let s = astr!("hello world");
@@ -556,5 +606,26 @@ mod tests {
         let str = s.as_str();
         let cstr = std::ffi::CStr::from_bytes_with_nul(str.as_bytes()).unwrap();
         assert_eq!(cstr.to_str().unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_concat() {
+        let s = astr!("hello", " world");
+
+        assert_eq!(s, "hello world");
+    }
+
+    #[test]
+    fn test_concat_three() {
+        let s = astr!("hello", " world", "!");
+
+        assert_eq!(s, "hello world!");
+    }
+    #[test]
+    fn test_concat_existing_const() {
+        const A: &AStr<5>= astr!("hello");
+        // let a: &AStr<5>= astr!("hello");
+        let s = astr!(A, " world!");
+        assert_eq!(s, "hello world!");
     }
 }
