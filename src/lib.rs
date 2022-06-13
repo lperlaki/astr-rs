@@ -165,6 +165,9 @@ impl<const LEN: usize> AStr<LEN> {
     }
 
     /// Create a new AStr from a slice of bytes.
+    /// # Safety
+    /// The slice must be valid UTF-8.
+    /// And the slice must be of the correct length.
     pub const unsafe fn from_utf8_unchecked(slice: &[u8]) -> &Self {
         debug_assert!(slice.len() == LEN);
         Self::from_utf8_array_unchecked_ref(&*slice.as_ptr().cast::<[u8; LEN]>())
@@ -172,7 +175,7 @@ impl<const LEN: usize> AStr<LEN> {
 
     /// Create a new AStr from a slice of bytes.
     pub fn try_from_utf8(slice: &[u8]) -> Result<&Self, AStrError> {
-        Ok(Self::try_from_utf8_array_ref(slice.try_into()?)?)
+        Self::try_from_utf8_array_ref(slice.try_into()?)
     }
 
     /// Create a new AStr from a slice of bytes.
@@ -184,7 +187,7 @@ impl<const LEN: usize> AStr<LEN> {
 
     /// Create a new AStr from a slice of bytes.
     pub fn try_from_utf8_mut(slice: &mut [u8]) -> Result<&mut Self, AStrError> {
-        Ok(Self::try_from_utf8_array_mut(slice.try_into()?)?)
+        Self::try_from_utf8_array_mut(slice.try_into()?)
     }
 
     /// Create a new AStr from a slice of bytes.
@@ -194,6 +197,9 @@ impl<const LEN: usize> AStr<LEN> {
         Self::try_from_utf8_mut(slice).unwrap()
     }
 
+    /// Create a new AStr from a slice of bytes.
+    /// # Safety
+    /// the str must be the correct length.
     pub const unsafe fn from_str_ref_unchecked(s: &str) -> &Self {
         Self::from_utf8_unchecked(s.as_bytes())
     }
@@ -302,10 +308,18 @@ impl<const LEN: usize> AStr<LEN> {
         &self,
         other: &AStr<B_LEN>,
     ) -> AStr<RET_LEN> {
-        assert!(LEN + B_LEN == RET_LEN, "AStr concat length mismatch. Shold be {} but is {}", LEN + B_LEN, RET_LEN);
+        assert!(
+            LEN + B_LEN == RET_LEN,
+            "AStr concat length mismatch. Shold be {} but is {}",
+            LEN + B_LEN,
+            RET_LEN
+        );
         unsafe { self.concat_unchecked(other) }
     }
 
+    /// Concatenate two AStrs.
+    /// # Safety
+    /// RET_LEN must be LEN + B_LEN
     pub const unsafe fn concat_unchecked<const B_LEN: usize, const RET_LEN: usize>(
         &self,
         other: &AStr<B_LEN>,
