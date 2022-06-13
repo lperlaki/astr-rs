@@ -11,36 +11,9 @@ mod valid_input {
         inp
     }
 }
+
+#[doc(hidden)]
 pub use valid_input::valid_input;
-
-macro_rules! concat_astr {
-    ($a:expr, $b:expr) => {{
-        $crate::valid_input($a);
-        $crate::valid_input($b);
-        const A_LEN: usize = $a.len();
-        const B_LEN: usize = $b.len();
-        const LEN: usize = A_LEN + B_LEN;
-
-        let ret_buf: [u8; LEN] = {
-    let mut ret = [0; LEN];
-    let mut i = 0;
-    while i < A_LEN {
-        ret[i] = $a.as_bytes()[i];
-        i += 1;
-    }
-    while i < LEN {
-        ret[i] = $b.as_bytes()[i - A_LEN];
-        i += 1;
-    }
-    ret
-};
-
-        unsafe { $crate::AStr::<LEN>::from_utf8_array_unchecked(ret_buf) }
-    }};
-    ($a:expr, $b:expr, $($rest:expr),*) => {{
-        concat_astr!($a, concat_astr!($b, $($rest),*))
-    }};
-}
 
 /// # astr
 /// Build an AStr from a string literal.
@@ -76,13 +49,8 @@ macro_rules! astr {
             $crate::valid_input($input);
             const LEN: usize = $input.len();
             // this is safe because we know that the bytes are valid utf8
-            $crate::AStr::<LEN>::from_utf8_array_unchecked_ref(
-                &*$input.as_ptr().cast::<[u8; LEN]>(),
-            )
+            $crate::AStr::<LEN>::from_utf8_unchecked($input.as_bytes())
         }
-    };
-    ($a:expr, $( $rest:expr),*) => {
-        concat_astr!($a, $($rest),*)
     };
     ($input:expr; $len:literal) => {{
         const CHAR: char = $input;
@@ -197,6 +165,12 @@ impl<const LEN: usize> AStr<LEN> {
     }
 
     /// Create a new AStr from a slice of bytes.
+    pub const unsafe fn from_utf8_unchecked(slice: &[u8]) -> &Self {
+        debug_assert!(slice.len() == LEN);
+        Self::from_utf8_array_unchecked_ref(&*slice.as_ptr().cast::<[u8; LEN]>())
+    }
+
+    /// Create a new AStr from a slice of bytes.
     pub fn try_from_utf8(slice: &[u8]) -> Result<&Self, AStrError> {
         Ok(Self::try_from_utf8_array_ref(slice.try_into()?)?)
     }
@@ -218,6 +192,10 @@ impl<const LEN: usize> AStr<LEN> {
     /// Panics if the slice is not valid UTF-8 or the wrong length.
     pub fn from_utf8_mut(slice: &mut [u8]) -> &mut Self {
         Self::try_from_utf8_mut(slice).unwrap()
+    }
+
+    pub const unsafe fn from_str_ref_unchecked(s: &str) -> &Self {
+        Self::from_utf8_unchecked(s.as_bytes())
     }
 
     /// Create a new AStr from a str
@@ -315,7 +293,40 @@ impl<const LEN: usize> AStr<LEN> {
         }
 
         unsafe { Self::from_utf8_array_unchecked(bytes) }
-    }pub const fn len(&self) -> usize { self.as_str().len()}
+    }
+    pub const fn len(&self) -> usize {
+        self.as_str().len()
+    }
+
+    pub fn concat<const B_LEN: usize, const RET_LEN: usize>(
+        &self,
+        other: &AStr<B_LEN>,
+    ) -> AStr<RET_LEN> {
+        assert!(LEN + B_LEN == RET_LEN, "AStr concat length mismatch. Shold be {} but is {}", LEN + B_LEN, RET_LEN);
+        unsafe { self.concat_unchecked(other) }
+    }
+
+    pub const unsafe fn concat_unchecked<const B_LEN: usize, const RET_LEN: usize>(
+        &self,
+        other: &AStr<B_LEN>,
+    ) -> AStr<RET_LEN> {
+        let ret_buf: [u8; RET_LEN] = {
+            let mut ret = [0; RET_LEN];
+            let a_bytes = self.as_bytes();
+            let b_byets = other.as_bytes();
+            let mut i = 0;
+            while i < LEN {
+                ret[i] = a_bytes[i];
+                i += 1;
+            }
+            while i < RET_LEN {
+                ret[i] = b_byets[i - LEN];
+                i += 1;
+            }
+            ret
+        };
+        AStr::<RET_LEN>::from_utf8_array_unchecked(ret_buf)
+    }
 }
 
 impl<const LEN: usize> AsRef<str> for AStr<LEN> {
@@ -610,22 +621,10 @@ mod tests {
 
     #[test]
     fn test_concat() {
-        let s = astr!("hello", " world");
+        let a = astr!("hello");
+        let b = astr!(" world");
+        let s: AStr<11> = a.concat(b);
 
         assert_eq!(s, "hello world");
-    }
-
-    #[test]
-    fn test_concat_three() {
-        let s = astr!("hello", " world", "!");
-
-        assert_eq!(s, "hello world!");
-    }
-    #[test]
-    fn test_concat_existing_const() {
-        const A: &AStr<5>= astr!("hello");
-        // let a: &AStr<5>= astr!("hello");
-        let s = astr!(A, " world!");
-        assert_eq!(s, "hello world!");
     }
 }
