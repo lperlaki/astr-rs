@@ -342,15 +342,15 @@ impl<const LEN: usize> AStr<LEN> {
         AStr::<RET_LEN>::from_utf8_array_unchecked(ret_buf)
     }
 
-    pub fn try_from_fmt(display: impl std::fmt::Display) -> Result<Self, std::fmt::Error> {
-        use std::fmt::Write;
+    pub fn try_from_fmt(display: impl core::fmt::Display) -> Result<Self, core::fmt::Error> {
+        use core::fmt::Write;
         let mut builder = FmtBuilder::new();
         write!(builder, "{}", display)?;
         builder.finalize()
     }
 }
 
-/// Private type to build an [`AStr`] from anything that can print to an [std::fmt::Write]
+/// Private type to build an [`AStr`] from anything that can print to an [core::fmt::Write]
 struct FmtBuilder<const LEN: usize> {
     len: usize,
     partial: AStr<LEN>,
@@ -364,24 +364,24 @@ impl<const LEN: usize> FmtBuilder<LEN> {
         }
     }
 
-    pub fn finalize(self) -> Result<AStr<LEN>, std::fmt::Error> {
+    pub fn finalize(self) -> Result<AStr<LEN>, core::fmt::Error> {
         if self.len == LEN {
             Ok(self.partial)
         } else {
-            Err(std::fmt::Error)
+            Err(core::fmt::Error)
         }
     }
 }
 
-impl<const LEN: usize> std::fmt::Write for FmtBuilder<LEN> {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+impl<const LEN: usize> core::fmt::Write for FmtBuilder<LEN> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
         let s_len = s.len();
         let offset = self.len;
 
-        self.len = self.len.checked_add(s_len).ok_or(std::fmt::Error)?;
+        self.len = self.len.checked_add(s_len).ok_or(core::fmt::Error)?;
 
-        let rest = self.partial.get_mut(offset..).ok_or(std::fmt::Error)?;
-        let rest_bounded = rest.get_mut(..s_len).ok_or(std::fmt::Error)?;
+        let rest = self.partial.get_mut(offset..).ok_or(core::fmt::Error)?;
+        let rest_bounded = rest.get_mut(..s_len).ok_or(core::fmt::Error)?;
 
         // SAFETY:
         // `rest_bounded` and `s` are both valid string slices.
