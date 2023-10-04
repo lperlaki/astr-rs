@@ -341,6 +341,57 @@ impl<const LEN: usize> AStr<LEN> {
         };
         AStr::<RET_LEN>::from_utf8_array_unchecked(ret_buf)
     }
+
+    pub fn try_from_fmt(display: impl std::fmt::Display) -> Result<Self, std::fmt::Error> {
+        use std::fmt::Write;
+        let mut builder = FmtBuilder::new();
+        write!(builder, "{}", display)?;
+        builder.finalize()
+    }
+}
+
+/// Private type to build an [`AStr`] from anything that can print to an [std::fmt::Write]
+struct FmtBuilder<const LEN: usize> {
+    len: usize,
+    partial: AStr<LEN>,
+}
+
+impl<const LEN: usize> FmtBuilder<LEN> {
+    pub fn new() -> Self {
+        Self {
+            len: 0,
+            partial: AStr::repeat('\0'),
+        }
+    }
+
+    pub fn finalize(self) -> Result<AStr<LEN>, std::fmt::Error> {
+        if self.len == LEN {
+            Ok(self.partial)
+        } else {
+            Err(std::fmt::Error)
+        }
+    }
+}
+
+impl<const LEN: usize> std::fmt::Write for FmtBuilder<LEN> {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        let s_len = s.len();
+        let offset = self.len;
+
+        self.len = self.len.checked_add(s_len).ok_or(std::fmt::Error)?;
+
+        let rest = self.partial.get_mut(offset..).ok_or(std::fmt::Error)?;
+        let rest_bounded = rest.get_mut(..s_len).ok_or(std::fmt::Error)?;
+
+        // SAFETY:
+        // `rest_bounded` and `s` are both valid string slices.
+        // Additionally, both have the same size so `copy_from_slice` shouldn't panic.
+        unsafe {
+            rest_bounded.as_bytes_mut().copy_from_slice(s.as_bytes());
+        }
+
+        Ok(())
+    }
 }
 
 impl<const LEN: usize> AsRef<str> for AStr<LEN> {
@@ -640,5 +691,24 @@ mod tests {
         let s: AStr<11> = a.concat(b);
 
         assert_eq!(s, "hello world");
+    }
+
+    #[test]
+    fn test_from_fmt() {
+        let empty = AStr::<0>::try_from_fmt("").unwrap();
+        assert_eq!(empty, "");
+
+        let salmon = 0xFA8072u32;
+        let salmon_str = AStr::<6>::try_from_fmt(format_args!("{salmon:06X}")).unwrap();
+        assert_eq!(salmon_str, "FA8072")
+    }
+
+    #[test]
+    fn test_from_fmt_err() {
+        let too_short = AStr::<16>::try_from_fmt("hello");
+        assert!(too_short.is_err());
+
+        let too_long = AStr::<8>::try_from_fmt("hello world");
+        assert!(too_long.is_err());
     }
 }
