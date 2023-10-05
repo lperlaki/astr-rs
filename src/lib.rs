@@ -351,12 +351,12 @@ impl<const LEN: usize> AStr<LEN> {
 }
 
 /// Private type to build an [`AStr`] from anything that can print to an [core::fmt::Write]
-struct FmtBuilder<const LEN: usize> {
+struct FmtBuilder<const CAP: usize> {
     len: usize,
-    partial: AStr<LEN>,
+    partial: AStr<CAP>,
 }
 
-impl<const LEN: usize> FmtBuilder<LEN> {
+impl<const CAP: usize> FmtBuilder<CAP> {
     pub fn new() -> Self {
         Self {
             len: 0,
@@ -364,8 +364,8 @@ impl<const LEN: usize> FmtBuilder<LEN> {
         }
     }
 
-    pub fn finalize(self) -> Result<AStr<LEN>, core::fmt::Error> {
-        if self.len == LEN {
+    pub fn finalize(self) -> Result<AStr<CAP>, core::fmt::Error> {
+        if self.len == CAP {
             Ok(self.partial)
         } else {
             Err(core::fmt::Error)
@@ -373,22 +373,25 @@ impl<const LEN: usize> FmtBuilder<LEN> {
     }
 }
 
-impl<const LEN: usize> core::fmt::Write for FmtBuilder<LEN> {
+fn str_copy_from_slice(dest: &mut str, src: &str) {
+    // SAFETY: `dest` and `src` are both valid string slices
+    unsafe {
+        dest.as_bytes_mut().copy_from_slice(src.as_bytes());
+    }
+}
+
+impl<const CAP: usize> core::fmt::Write for FmtBuilder<CAP> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         let s_len = s.len();
         let offset = self.len;
 
-        self.len = self.len.checked_add(s_len).ok_or(core::fmt::Error)?;
+        let new_len = self.len.checked_add(s_len).ok_or(core::fmt::Error)?;
 
         let rest = self.partial.get_mut(offset..).ok_or(core::fmt::Error)?;
         let rest_bounded = rest.get_mut(..s_len).ok_or(core::fmt::Error)?;
 
-        // SAFETY:
-        // `rest_bounded` and `s` are both valid string slices.
-        // Additionally, both have the same size so `copy_from_slice` shouldn't panic.
-        unsafe {
-            rest_bounded.as_bytes_mut().copy_from_slice(s.as_bytes());
-        }
+        str_copy_from_slice(rest_bounded, s);
+        self.len = new_len;
 
         Ok(())
     }
