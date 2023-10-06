@@ -52,7 +52,7 @@ macro_rules! astr {
             $crate::AStr::<LEN>::from_utf8_unchecked($input.as_bytes())
         }
     };
-    ($input:expr; $len:literal) => {{
+    ($input:expr; $expr:literal) => {{
         const CHAR: char = $input;
 
         const LEN: usize = $len * CHAR.len_utf8();
@@ -339,7 +339,7 @@ impl<const LEN: usize> AStr<LEN> {
     ///
     /// This length is in bytes, not [char]s or graphemes. In other words, it might not be what a human considers the length of the string.
     pub const fn len(&self) -> usize {
-        self.as_str().len()
+        LEN
     }
 
     /// Concatenate two [AStr]s.
