@@ -62,6 +62,36 @@ macro_rules! astr {
     }};
 }
 
+/// Build an [AStr] from a format string
+///
+/// Because an [AStr] has a fixed length, the format string must expand to exactly the expected
+/// number of bytes, or it would be impossible to build the AStr. As a result, this macro evaluates
+/// to a `Result<AStr, std::fmt::Error>` to carry the error, if any.
+///
+/// The `LEN` of the returned `AStr` has to be inferred from the expansion site, there is no way to
+/// set it explicitly in this macro's syntax.
+///
+/// This macro uses the same syntax as [`format!`], but creates a `Result<AStr, std::fmt::Error>`
+/// instead. See [`std::fmt`] for more information.
+///
+/// ## Examples
+///
+/// ```
+/// # use astr::*;
+/// let color: AStr<7> = format_astr!("#{:06X}", 0xFA8072u32).unwrap();
+/// ```
+/// ```ignore
+/// # use astr::*;
+/// use uuid::Uuid;
+/// let uuid: AStr<36> = format_astr!("{}", Uuid::new_v4()).unwrap();
+/// ```
+#[macro_export]
+macro_rules! format_astr {
+    ($($arg:tt)*) => {
+        $crate::AStr::try_from_fmt(format_args!($($arg)*))
+    }
+}
+
 /// A str with a copiletime length.
 ///
 /// This is a wrapper around an array of bytes representing an utf-8 string.
@@ -340,6 +370,69 @@ impl<const LEN: usize> AStr<LEN> {
             ret
         };
         AStr::<RET_LEN>::from_utf8_array_unchecked(ret_buf)
+    }
+
+    /// Build an [AStr] from a an implementation of [`Display`][core::fmt::Display]
+    ///
+    /// See also [`format_astr!`] for a more convenient syntax.
+    ///
+    /// # Error
+    ///
+    /// Because an [AStr] has a fixed length, `display` must write exactly the expected number of
+    /// bytes to its `Formatter`, or this function will return an `Err`.
+    #[doc(alias = "format", alias = "display")]
+    pub fn try_from_fmt(display: impl core::fmt::Display) -> Result<Self, core::fmt::Error> {
+        use core::fmt::Write;
+        let mut builder = FmtBuilder::new();
+        write!(builder, "{}", display)?;
+        builder.finalize()
+    }
+}
+
+/// Private type to build an [`AStr`] from anything that can print to an [core::fmt::Write]
+struct FmtBuilder<const CAP: usize> {
+    len: usize,
+    partial: AStr<CAP>,
+}
+
+impl<const CAP: usize> FmtBuilder<CAP> {
+    pub fn new() -> Self {
+        Self {
+            len: 0,
+            partial: AStr::repeat('\0'),
+        }
+    }
+
+    pub fn finalize(self) -> Result<AStr<CAP>, core::fmt::Error> {
+        if self.len == CAP {
+            Ok(self.partial)
+        } else {
+            Err(core::fmt::Error)
+        }
+    }
+}
+
+fn str_copy_from_slice(dest: &mut str, src: &str) {
+    // SAFETY: `dest` and `src` are both valid string slices
+    unsafe {
+        dest.as_bytes_mut().copy_from_slice(src.as_bytes());
+    }
+}
+
+impl<const CAP: usize> core::fmt::Write for FmtBuilder<CAP> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        let s_len = s.len();
+        let offset = self.len;
+
+        let new_len = self.len.checked_add(s_len).ok_or(core::fmt::Error)?;
+
+        let rest = self.partial.get_mut(offset..).ok_or(core::fmt::Error)?;
+        let rest_bounded = rest.get_mut(..s_len).ok_or(core::fmt::Error)?;
+
+        str_copy_from_slice(rest_bounded, s);
+        self.len = new_len;
+
+        Ok(())
     }
 }
 
@@ -640,5 +733,30 @@ mod tests {
         let s: AStr<11> = a.concat(b);
 
         assert_eq!(s, "hello world");
+    }
+
+    #[test]
+    fn test_from_fmt() {
+        let empty = AStr::<0>::try_from_fmt("").unwrap();
+        assert_eq!(empty, "");
+
+        let salmon = 0xFA8072u32;
+        let salmon_str = AStr::<6>::try_from_fmt(format_args!("{salmon:06X}")).unwrap();
+        assert_eq!(salmon_str, "FA8072")
+    }
+
+    #[test]
+    fn test_from_fmt_err() {
+        let too_short = AStr::<16>::try_from_fmt("hello");
+        assert!(too_short.is_err());
+
+        let too_long = AStr::<8>::try_from_fmt("hello world");
+        assert!(too_long.is_err());
+    }
+
+    #[test]
+    fn test_format_astr() {
+        let salmon_str: AStr<6> = format_astr!("{:06X}", 0xFA8072u32).unwrap();
+        assert_eq!(salmon_str, "FA8072");
     }
 }
