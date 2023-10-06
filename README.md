@@ -2,7 +2,7 @@
 
 > **a**rray **str**ing
 
-A const lenght stack str
+A const length stack str
 
 | Unsized | Const Length | Dynamic |
 |--- | --- | --- |
