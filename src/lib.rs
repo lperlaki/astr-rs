@@ -92,7 +92,7 @@ macro_rules! format_astr {
     }
 }
 
-/// A str with a copiletime length.
+/// A str with a compile time length.
 ///
 /// This is a wrapper around an array of bytes representing an utf-8 string.
 ///
@@ -304,13 +304,17 @@ impl<const LEN: usize> AStr<LEN> {
         unsafe { core::str::from_utf8_unchecked_mut(self.as_bytes_mut()) }
     }
 
-    /// repeate ascii char LEN times to fill the str
+    /// repeat ascii char LEN times to fill the str
     /// # Safety
     /// the byte must be valid UTF-8.
     pub const unsafe fn repeat_byte(byte: u8) -> Self {
         Self::from_utf8_array_unchecked([byte; LEN])
     }
 
+    /// repeat the char as often as it fits in the LEN str
+    ///
+    /// # Panics
+    /// Panics if char utf8 len is not a divisor of LEN
     pub const fn repeat(c: char) -> Self {
         let char_len = c.len_utf8();
 
@@ -324,30 +328,38 @@ impl<const LEN: usize> AStr<LEN> {
         let mut bytes = [0; LEN];
         let mut i = 0;
         while i < LEN {
-            bytes[i] = char_bytes[(i % char_len)];
+            bytes[i] = char_bytes[i % char_len];
             i += 1
         }
 
         unsafe { Self::from_utf8_array_unchecked(bytes) }
     }
+
+    /// Returns the length of self.
+    ///
+    /// This length is in bytes, not [char]s or graphemes. In other words, it might not be what a human considers the length of the string.
     pub const fn len(&self) -> usize {
         self.as_str().len()
     }
 
+    /// Concatenate two [AStr]s.
+    ///
+    /// # Panics
+    /// Panics if RET_LEN is not LEN + B_LEN
     pub fn concat<const B_LEN: usize, const RET_LEN: usize>(
         &self,
         other: &AStr<B_LEN>,
     ) -> AStr<RET_LEN> {
         assert!(
             LEN + B_LEN == RET_LEN,
-            "AStr concat length mismatch. Shold be {} but is {}",
+            "AStr concat length mismatch. Should be {} but is {}",
             LEN + B_LEN,
             RET_LEN
         );
         unsafe { self.concat_unchecked(other) }
     }
 
-    /// Concatenate two AStrs.
+    /// Concatenate two [AStr]s.
     /// # Safety
     /// RET_LEN must be LEN + B_LEN
     pub const unsafe fn concat_unchecked<const B_LEN: usize, const RET_LEN: usize>(
@@ -357,14 +369,14 @@ impl<const LEN: usize> AStr<LEN> {
         let ret_buf: [u8; RET_LEN] = {
             let mut ret = [0; RET_LEN];
             let a_bytes = self.as_bytes();
-            let b_byets = other.as_bytes();
+            let b_bytes = other.as_bytes();
             let mut i = 0;
             while i < LEN {
                 ret[i] = a_bytes[i];
                 i += 1;
             }
             while i < RET_LEN {
-                ret[i] = b_byets[i - LEN];
+                ret[i] = b_bytes[i - LEN];
                 i += 1;
             }
             ret
